@@ -51,7 +51,11 @@ const handle = createHandler({
 });
 const server = createServer(async (req, res) => {
   try {
+    const abort = new AbortController();
+    req.on("aborted", () => abort.abort());
+    res.on("close", () => abort.abort());
     const request = new Request(new URL(req.url, "http://localhost"), {
+      signal: abort.signal,
       method: req.method,
       headers: req.headers,
       body: ["GET", "HEAD"].includes(req.method)

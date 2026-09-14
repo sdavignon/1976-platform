@@ -6,6 +6,9 @@ import {
   type Data,
 } from "./client.js";
 import type { MySQLStore, Scope, Principal } from "./mysql.js";
+import type { AgentService } from "./agents.js";
+import type { WorkflowEngine } from "./workflows.js";
+import { snapshotStream } from "./realtime.js";
 export type Handler = (data: Data, context: Context) => any | Promise<any>;
 export type RegisteredHandler = {
   authorize: (scope: Scope, data: Data) => boolean | Promise<boolean>;
@@ -25,6 +28,9 @@ export interface ServerOptions {
   events?: Record<string, RegisteredHandler>;
   maxBodyBytes?: number;
   onError?: (error: unknown) => void;
+  agents?: AgentService;
+  workflows?: WorkflowEngine;
+  realtime?: { intervalMs?: number; maxDurationMs?: number };
 }
 /** Use an external OIDC issuer. Signature, expiration, issuer and audience are verified. */
 export function jwtAuthenticator(options: {
@@ -110,6 +116,23 @@ export function createServerClient(
     });
     return {
       entities,
+      agents: {
+        createConversation: (data: Data) =>
+          options.agents?.execute(active, "createConversation", data) ??
+          Promise.reject(new PlatformError("Agents not configured", 501)),
+        listConversations: (data: Data = {}) =>
+          options.agents?.execute(active, "listConversations", data) ??
+          Promise.reject(new PlatformError("Agents not configured", 501)),
+        getConversation: (id: string) =>
+          options.agents?.execute(active, "getConversation", { id }) ??
+          Promise.reject(new PlatformError("Agents not configured", 501)),
+        addMessage: (conversation: Data | string, message: Data) =>
+          options.agents?.execute(active, "addMessage", {
+            id:
+              typeof conversation === "string" ? conversation : conversation.id,
+            message,
+          }) ?? Promise.reject(new PlatformError("Agents not configured", 501)),
+      },
       auth: {
         me: async () => {
           if (!active.user) throw new PlatformError("Unauthorized", 401);
@@ -198,12 +221,51 @@ export function createHandler(options: ServerOptions) {
         .map(decodeURIComponent);
       const provider =
         path[0] === "auth" && path[1] === "provider" && path.length === 3;
-      if (request.method !== "POST" && !(provider && request.method === "GET"))
+      const entityStream =
+        path[0] === "entities" && path[2] === "subscribe" && path.length === 3;
+      const agentStream =
+        path[0] === "agents" && path[1] === "subscribe" && path.length === 3;
+      if (
+        request.method !== "POST" &&
+        !((provider || entityStream || agentStream) && request.method === "GET")
+      )
         throw new PlatformError("Method not allowed", 405);
       const scope: Scope = {
         appId: options.appId,
         user: await options.authenticate(request),
       };
+      if (entityStream || agentStream) {
+        if (!options.realtime)
+          throw new PlatformError("Realtime not configured", 501);
+        if (!scope.user) throw new PlatformError("Unauthorized", 401);
+        return await snapshotStream(
+          request,
+          async () => {
+            const user = await options.authenticate(request);
+            if (!user || user.id !== scope.user!.id)
+              throw new PlatformError("Unauthorized", 401);
+            const fresh = { appId: options.appId, user };
+            if (agentStream) {
+              if (!options.agents)
+                throw new PlatformError("Agents not configured", 501);
+              return options.agents.execute(fresh, "getConversation", {
+                id: path[2],
+              });
+            }
+            const rows = await options.store.execute(fresh, path[1], "filter", {
+              query: {},
+              limit: 1000,
+            });
+            if (rows.length >= 1000)
+              throw new PlatformError(
+                "Entity subscription exceeds snapshot limit",
+                413,
+              );
+            return rows;
+          },
+          options.realtime,
+        );
+      }
       // A user-supplied role or service header never grants service access.
       const context: Context = {
         ...scope,
@@ -215,7 +277,24 @@ export function createHandler(options: ServerOptions) {
           ? Object.fromEntries(url.searchParams)
           : await body(request, options.maxBodyBytes ?? 10 * 1024 * 1024);
       let result: any;
-      if (path[0] === "entities" && path.length === 3)
+      if (path[0] === "agents" && path.length === 2) {
+        if (!options.agents)
+          throw new PlatformError("Agents not configured", 501);
+        result = await options.agents.execute(scope, path[1], data);
+      } else if (path[0] === "workflows" && path.length === 2) {
+        if (!options.workflows)
+          throw new PlatformError("Workflows not configured", 501);
+        if (path[1] === "enqueue")
+          result = await options.workflows.enqueue(
+            scope,
+            data.name,
+            data.input,
+            data.options ?? {},
+          );
+        else if (path[1] === "get")
+          result = await options.workflows.get(scope, data.id);
+        else throw new PlatformError("Unknown workflow operation", 404);
+      } else if (path[0] === "entities" && path.length === 3)
         result = await options.store.execute(scope, path[1], path[2], data);
       else if (path[0] === "functions" && path.length === 2)
         result = await registered(
