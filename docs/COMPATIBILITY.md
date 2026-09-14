@@ -9,7 +9,7 @@ Reference snapshots inspected on 2026-09-14:
 
 A textual scan found 116 `base44.functions.invoke` and 95 `base44.auth.me` calls across their source and functions. This is a prioritization signal, not a percentage compatibility guarantee; aliases, generated code and dead code affect counts. Both apps use numerous entity CRUD operations and public/private storage integrations.
 
-| Interface | Status in 0.1 | Notes |
+| Interface | Status in 0.2 | Notes |
 |---|---|---|
 | `createClient({appId,serverUrl,token})` | Implemented | Explicit new API URL; tokens held in memory |
 | `entities.Name.list/filter/get/create/update/delete` | Implemented | Registered entity and policy required |
@@ -28,10 +28,12 @@ A textual scan found 116 `base44.functions.invoke` and 95 `base44.auth.me` calls
 | `Core.InvokeLLM/GenerateImage/SendEmail` | Extension interface | Supply authorized provider handlers; otherwise 501 |
 | `analytics.track/appLogs.logUserInApp` | Extension interface | Supply event sink; otherwise 501 |
 | Cloudflare DNS CRUD | Implemented extension | Server-only; explicit zone; paginated list envelope |
-| Entity subscriptions / agents conversations | Not implemented | Port to a realtime/agent provider before app cutover |
+| Entity subscriptions / agent conversations | Implemented subset | Authenticated SSE snapshots, persisted owner-scoped conversations, configured responder; see RUNTIME.md |
+| Workflows and schedules | Implemented subset | Durable queue, retries/leases/steps, cron with timezone, intervals, static sequential Base44 DSL conversion |
 | Connectors / SSO / user invitations | Not implemented | Port integrations explicitly |
-| Schema import, Base44 RLS syntax, data export/import | Not implemented | Translate schemas and policies; separate migration tooling |
-| Base44 CLI, Deno hosting, schedules, app editor | Not implemented | Use your own runtime and scheduler |
+| Schema validation / data migration | Implemented operator tooling | JSONC review, explicit policies, ID-preserving MySQL import/export, verify/rollback; no automatic Base44 export or RLS translation |
+| Cutover control | Implemented adapter layer | Evidence digest, target checks and traffic rollback; no pilot, production activation or crash-durable routing journal |
+| Base44 CLI, Deno hosting, app editor | Not implemented | Use your own runtime; migration CLI is separate |
 
 The client accepts `requiresAuth`, `functionsVersion`, and `appBaseUrl` for source configuration compatibility, but these do not configure hosting, versioned functions, or server authorization. Server policies are authoritative. No automatic token persistence or cookie authentication is provided by the JWT helper.
 

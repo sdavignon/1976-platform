@@ -1,6 +1,6 @@
 {
   "name": "@1976studios/platform",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Open Base44-style application SDK with MySQL and Cloudflare adapters, by 1976Studios",
   "type": "module",
   "license": "MIT",
@@ -22,6 +22,26 @@
       "types": "./dist/mysql.d.ts",
       "import": "./dist/mysql.js"
     },
+    "./workflows": {
+      "types": "./dist/workflows.d.ts",
+      "import": "./dist/workflows.js"
+    },
+    "./schedules": {
+      "types": "./dist/schedules.d.ts",
+      "import": "./dist/schedules.js"
+    },
+    "./agents": {
+      "types": "./dist/agents.d.ts",
+      "import": "./dist/agents.js"
+    },
+    "./migration": {
+      "types": "./dist/migration.d.ts",
+      "import": "./dist/migration.js"
+    },
+    "./cutover": {
+      "types": "./dist/cutover.d.ts",
+      "import": "./dist/cutover.js"
+    },
     "./cloudflare": {
       "types": "./dist/cloudflare.d.ts",
       "import": "./dist/cloudflare.js"
@@ -34,6 +54,9 @@
     "docs",
     "examples"
   ],
+  "bin": {
+    "1976-platform": "dist/cli.js"
+  },
   "engines": {
     "node": ">=22"
   },
@@ -46,7 +69,11 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
     "@aws-sdk/s3-request-presigner": "^3.0.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "cron-parser": "^5.10.1",
     "jose": "^6.0.0",
+    "jsonc-parser": "^3.3.1",
     "mysql2": "^3.0.0"
   },
   "devDependencies": {

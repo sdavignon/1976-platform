@@ -43,6 +43,14 @@ export interface Entity<T extends Data = Data> {
   update(id: string, data: Partial<T>): Promise<T>;
   delete(id: string): Promise<{ id: string }>;
   bulkCreate(data: Partial<T>[]): Promise<T[]>;
+  subscribe(
+    callback: (event: {
+      id: string;
+      type: "create" | "update" | "delete";
+      data?: T;
+    }) => void,
+    onError?: (error: Error) => void,
+  ): () => void;
 }
 export class PlatformError extends Error {
   constructor(
@@ -62,6 +70,7 @@ export interface ClientOptions {
   requiresAuth?: boolean;
   functionsVersion?: string;
   appBaseUrl?: string;
+  onRealtimeError?: (error: Error) => void;
 }
 /** Browser-safe client. Service credentials only exist in the server entrypoint. */
 export function createClient(options: ClientOptions) {
@@ -69,6 +78,77 @@ export function createClient(options: ClientOptions) {
   let token = options.token;
   const transport = options.fetch ?? globalThis.fetch;
   const root = `${(options.serverUrl ?? "").replace(/\/$/, "")}/api/apps/${encodeURIComponent(options.appId)}`;
+  function subscribe(
+    path: string,
+    callback: (value: any) => void,
+    onError = options.onRealtimeError,
+  ) {
+    const abort = new AbortController();
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    async function connect() {
+      let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+      try {
+        const response = await transport(root + path, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: "same-origin",
+          signal: abort.signal,
+        });
+        if (!response.ok)
+          throw new PlatformError("Subscription rejected", response.status);
+        if (
+          !response.headers
+            .get("content-type")
+            ?.startsWith("text/event-stream") ||
+          !response.body
+        )
+          throw new Error("Invalid event stream");
+        reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (!abort.signal.aborted) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          if (buffer.length > 16 * 1024 * 1024)
+            throw new Error("Event too large");
+          let end;
+          while ((end = buffer.indexOf("\n\n")) >= 0) {
+            const frame = buffer.slice(0, end);
+            buffer = buffer.slice(end + 2);
+            const event = frame
+              .split("\n")
+              .find((l) => l.startsWith("event:"))
+              ?.slice(6)
+              .trim();
+            const payload = frame
+              .split("\n")
+              .filter((l) => l.startsWith("data:"))
+              .map((l) => l.slice(5).trimStart())
+              .join("\n");
+            if (event === "error") throw new Error(JSON.parse(payload).error);
+            if (event === "snapshot" && !abort.signal.aborted)
+              callback(JSON.parse(payload));
+          }
+        }
+      } catch (e) {
+        if (!abort.signal.aborted)
+          onError?.(e instanceof Error ? e : new Error("Subscription failed"));
+        if (
+          e instanceof PlatformError &&
+          [401, 403, 404, 501].includes(e.status)
+        )
+          return;
+      } finally {
+        await reader?.cancel().catch(() => {});
+      }
+      if (!abort.signal.aborted) retry = setTimeout(connect, 1000);
+    }
+    void connect();
+    return () => {
+      abort.abort();
+      if (retry) clearTimeout(retry);
+    };
+  }
   async function call(path: string, body: unknown = {}, method = "POST") {
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -114,6 +194,27 @@ export function createClient(options: ClientOptions) {
           call(route + "/update", { id, data }),
         delete: (id: string) => call(route + "/delete", { id }),
         bulkCreate: (data: Data[]) => call(route + "/bulkCreate", { data }),
+        subscribe: (
+          callback: (event: Data) => void,
+          onError?: (error: Error) => void,
+        ) => {
+          let previous = new Map<string, Data>();
+          return subscribe(
+            route + "/subscribe",
+            (rows: Data[]) => {
+              const next = new Map(rows.map((row) => [row.id, row]));
+              for (const [id, row] of next) {
+                const old = previous.get(id);
+                if (!old || JSON.stringify(old) !== JSON.stringify(row))
+                  callback({ id, type: old ? "update" : "create", data: row });
+              }
+              for (const id of previous.keys())
+                if (!next.has(id)) callback({ id, type: "delete" });
+              previous = next;
+            },
+            onError,
+          );
+        },
       };
     },
   }) as Record<string, Entity>;
@@ -188,6 +289,40 @@ export function createClient(options: ClientOptions) {
   return {
     entities,
     auth,
+    agents: {
+      createConversation: (data: Data) =>
+        call("/agents/createConversation", data),
+      listConversations: (data: Data = {}) =>
+        call("/agents/listConversations", data),
+      getConversation: (id: string) => call("/agents/getConversation", { id }),
+      addMessage: (conversation: Data | string, message: Data) =>
+        call("/agents/addMessage", {
+          id: typeof conversation === "string" ? conversation : conversation.id,
+          message,
+        }),
+      subscribeToConversation: (
+        id: string,
+        callback: (conversation: Data) => void,
+        onError?: (error: Error) => void,
+      ) =>
+        subscribe(
+          "/agents/subscribe/" + encodeURIComponent(id),
+          callback,
+          onError,
+        ),
+    },
+    workflows: {
+      enqueue: (
+        name: string,
+        input: Data,
+        options: {
+          idempotencyKey: string;
+          delayMs?: number;
+          maxAttempts?: number;
+        },
+      ) => call("/workflows/enqueue", { name, input, options }),
+      get: (id: string) => call("/workflows/get", { id }),
+    },
     integrations: { Core },
     functions: {
       invoke: async (name: string, data: Data = {}) => ({

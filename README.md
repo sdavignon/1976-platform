@@ -4,7 +4,7 @@
 
 An open-source application library by **1976Studios**, created by Scott Davignon at [1976.cloud](https://1976.cloud). It provides familiar Base44-style JavaScript interfaces backed by MySQL and Cloudflare R2, with a server-only Cloudflare DNS client.
 
-**v0.1 is an early compatibility release, not a complete Base44 clone.** It implements the common data, function and upload patterns observed in [SocialCloud](https://github.com/sdavignon/socialcloud) and [MailWorthy](https://github.com/sdavignon/mailworthy). Authentication lifecycle, AI and email use explicitly configured handlers. Existing apps need a deliberate migration; changing one import does not migrate users, policies, functions or data.
+**v0.2 is a community preview, not a complete Base44 clone.** It implements common data, function and upload patterns observed in [SocialCloud](https://github.com/sdavignon/socialcloud) and [MailWorthy](https://github.com/sdavignon/mailworthy), plus durable workflows, timezone-aware schedules, live subscriptions, agent conversations and migration/cutover tools. Authentication lifecycle, AI and email use explicitly configured handlers. No pilot is selected; changing one import does not migrate an application.
 
 ## What you get
 
@@ -14,6 +14,10 @@ An open-source application library by **1976Studios**, created by Scott Davignon
 - JWT verification against an OIDC issuer, with audience and issuer checks.
 - Cloudflare R2 public uploads, private uploads and expiring private downloads.
 - Cloudflare DNS listing, creation, updates and deletion through explicit server-side credentials.
+- Durable MySQL workflows with retries, leases, step caching and app/version isolation; cron and interval schedules.
+- Authenticated SSE entity/conversation subscriptions and persistent provider-backed agent conversations.
+- JSONC schema review, preserved-ID data import/export, dry-run digests, verification and guarded rollback.
+- Evidence-gated cutover adapters with explicit target verification and traffic restoration outcomes.
 - TypeScript declarations, tests, CI with MySQL 8.4, and a runnable Node example.
 
 ## Install
@@ -21,7 +25,7 @@ An open-source application library by **1976Studios**, created by Scott Davignon
 Requires Node.js 22+ and MySQL 8.0+ (MySQL, not MariaDB).
 
 ```sh
-npm install github:sdavignon/1976-platform#v0.1.0
+npm install github:sdavignon/1976-platform#v0.2.0
 ```
 
 The package name is `@1976studios/platform`. Distribution is currently through GitHub; it is not published to the npm registry.
@@ -106,6 +110,9 @@ Use separate R2 buckets. Keep the private bucket's public access disabled. Publi
 ## Documentation and community
 
 - [Compatibility and limitations](docs/COMPATIBILITY.md)
+- [Workflows, schedules and live agents](docs/RUNTIME.md)
+- [Schema/data migration and cutover tools](docs/MIGRATION-TOOLS.md)
+- [Reference app assessment — no pilot selected](docs/PILOT-ASSESSMENT.md)
 - [Migration guide](docs/MIGRATION.md)
 - [Security and deployment](docs/SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
