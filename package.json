@@ -1,0 +1,57 @@
+{
+  "name": "@1976studios/platform",
+  "version": "0.1.0",
+  "description": "Open Base44-style application SDK with MySQL and Cloudflare adapters, by 1976Studios",
+  "type": "module",
+  "license": "MIT",
+  "author": "1976Studios (https://1976.cloud)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sdavignon/1976-platform.git"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    },
+    "./mysql": {
+      "types": "./dist/mysql.d.ts",
+      "import": "./dist/mysql.js"
+    },
+    "./cloudflare": {
+      "types": "./dist/cloudflare.d.ts",
+      "import": "./dist/cloudflare.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "docs",
+    "examples"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepare": "npm run build",
+    "start": "node examples/server.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/s3-request-presigner": "^3.0.0",
+    "jose": "^6.0.0",
+    "mysql2": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "prettier": "^3.9.6",
+    "typescript": "^5.0.0"
+  }
+}
